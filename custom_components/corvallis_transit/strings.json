@@ -1,0 +1,43 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This Corvallis Transit route and stop is already configured.",
+      "cannot_connect": "Unable to connect to the Corvallis Transit System API.",
+      "no_projects": "The transit API returned no agencies.",
+      "no_stops": "The selected route has no stops."
+    },
+    "error": {
+      "invalid_project": "The selected agency is no longer available.",
+      "invalid_route": "The selected route is no longer available.",
+      "invalid_stop": "The selected stop is no longer available."
+    },
+    "step": {
+      "project": {
+        "title": "Select transit agency",
+        "data": {
+          "project": "Agency"
+        }
+      },
+      "route": {
+        "title": "Select route",
+        "data": {
+          "route": "Route"
+        }
+      },
+      "stop": {
+        "title": "Select stop",
+        "data": {
+          "stop": "Stop"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_bus": {
+        "name": "Next bus"
+      }
+    }
+  },
+  "title": "Corvallis Transit System"
+}

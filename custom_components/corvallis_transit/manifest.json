@@ -1,7 +1,7 @@
 {
   "domain": "corvallis_transit",
   "name": "Corvallis Transit System",
-  "codeowners": [],
+  "codeowners": ["@hpux735"],
   "config_flow": true,
   "documentation": "https://www.corvallistransit.com/rtt/public/",
   "integration_type": "service",

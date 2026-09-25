@@ -4,6 +4,7 @@
       "already_configured": "This Corvallis Transit route and stop is already configured.",
       "cannot_connect": "Unable to connect to the Corvallis Transit System API.",
       "no_projects": "The transit API returned no agencies.",
+      "no_routes": "The selected agency has no routes.",
       "no_stops": "The selected route has no stops."
     },
     "error": {
@@ -16,18 +17,27 @@
         "title": "Select transit agency",
         "data": {
           "project": "Agency"
+        },
+        "data_description": {
+          "project": "The transit agency that operates the route."
         }
       },
       "route": {
         "title": "Select route",
         "data": {
           "route": "Route"
+        },
+        "data_description": {
+          "route": "The route to monitor at the selected stop."
         }
       },
       "stop": {
         "title": "Select stop",
         "data": {
           "stop": "Stop"
+        },
+        "data_description": {
+          "stop": "The stop where arrival times should be reported."
         }
       }
     },

@@ -1,0 +1,51 @@
+rules:
+  appropriate-polling: done
+  brands:
+    status: exempt
+    comment: This custom integration is not part of the Home Assistant brands program.
+  common-modules: done
+  config-flow: done
+  config-flow-test-coverage: done
+  dependency-transparency: done
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry: done
+  config-entry-unloading: done
+  docs-configuration-parameters: done
+  docs-data-update: done
+  docs-installation-parameters: done
+  docs-known-limitations: done
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: done
+  test-coverage: done
+  action-setup:
+    status: exempt
+    comment: This integration does not provide service actions.
+  action-exceptions:
+    status: exempt
+    comment: This integration does not provide service actions.
+  docs-actions:
+    status: exempt
+    comment: This integration does not provide service actions.
+  docs-triggers:
+    status: exempt
+    comment: This integration does not provide custom triggers.
+  docs-conditions:
+    status: exempt
+    comment: This integration does not provide conditions.
+  reauthentication-flow:
+    status: exempt
+    comment: The public CTS API does not require authentication.
+  devices: done

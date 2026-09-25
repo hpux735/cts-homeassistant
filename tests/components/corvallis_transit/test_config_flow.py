@@ -1,0 +1,198 @@
+"""Test the Corvallis Transit System config flow."""
+
+from unittest.mock import AsyncMock, patch
+
+from homeassistant import config_entries
+from homeassistant.const import CONF_STOP
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.corvallis_transit.api import CTSApiError
+from custom_components.corvallis_transit.const import (
+    CONF_PROJECT,
+    CONF_ROUTE,
+    DOMAIN,
+)
+
+from .const import CONFIG, MAP_DATA, PROJECT, ROUTE, STOP, UNIQUE_ID
+
+
+async def test_user_config(hass: HomeAssistant, mock_map_data: AsyncMock) -> None:
+    """Configure a route and stop through the UI flow."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "project"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_PROJECT: PROJECT}
+    )
+    assert result["step_id"] == "route"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ROUTE: f"{ROUTE}|9th st/hospital"}
+    )
+    assert result["step_id"] == "stop"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_STOP: STOP}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"]["route"] == ROUTE
+    assert result["data"]["platform_tag"] == STOP
+    assert result["result"].unique_id == UNIQUE_ID
+    assert mock_map_data.await_count == 1
+
+
+async def test_connection_failure(hass: HomeAssistant) -> None:
+    """Abort when the map endpoint cannot be reached."""
+    with patch(
+        "custom_components.corvallis_transit.config_flow.async_get_map_data",
+        new=AsyncMock(side_effect=CTSApiError),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "cannot_connect"
+
+
+async def test_no_projects(hass: HomeAssistant) -> None:
+    """Abort when the map has no agencies."""
+    with patch(
+        "custom_components.corvallis_transit.config_flow.async_get_map_data",
+        new=AsyncMock(return_value={"Projects": []}),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_projects"
+
+
+async def test_invalid_project(hass: HomeAssistant, mock_map_data: AsyncMock) -> None:
+    """Reject an agency that is not in the map response."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_PROJECT: "missing"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_PROJECT: "invalid_project"}
+
+
+async def test_invalid_route(hass: HomeAssistant, mock_map_data: AsyncMock) -> None:
+    """Reject a route that is not in the selected agency."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_PROJECT: PROJECT}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ROUTE: "missing"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_ROUTE: "invalid_route"}
+
+
+async def test_no_routes(hass: HomeAssistant) -> None:
+    """Abort when an agency has no routes."""
+    map_data = {**MAP_DATA, "Projects": [{"Tag": 1, "Name": "Empty"}]}
+    with patch(
+        "custom_components.corvallis_transit.config_flow.async_get_map_data",
+        new=AsyncMock(return_value=map_data),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_PROJECT: "1"}
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_routes"
+
+
+async def test_no_stops(hass: HomeAssistant) -> None:
+    """Abort when a route has no usable stops."""
+    map_data = {
+        **MAP_DATA,
+        "Projects": [
+            {
+                "Tag": 1,
+                "Name": "Empty stops",
+                "Routes": [{"No": "1", "Name": "empty", "Platforms": []}],
+            }
+        ],
+        "Platforms": [],
+    }
+    with patch(
+        "custom_components.corvallis_transit.config_flow.async_get_map_data",
+        new=AsyncMock(return_value=map_data),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_PROJECT: "1"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_ROUTE: "1|empty"}
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_stops"
+
+
+async def test_invalid_stop(hass: HomeAssistant, mock_map_data: AsyncMock) -> None:
+    """Reject a stop that is not served by the selected route."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_PROJECT: PROJECT}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ROUTE: f"{ROUTE}|9th st/hospital"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_STOP: "missing"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_STOP: "invalid_stop"}
+
+
+async def test_duplicate_entry(hass: HomeAssistant, mock_map_data: AsyncMock) -> None:
+    """Do not configure the same route and stop twice."""
+    existing = MockConfigEntry(
+        domain=DOMAIN,
+        title="Existing",
+        data=CONFIG,
+        unique_id=UNIQUE_ID,
+    )
+    existing.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_PROJECT: PROJECT}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ROUTE: f"{ROUTE}|9th st/hospital"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_STOP: STOP}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"

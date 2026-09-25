@@ -1,12 +1,12 @@
 """Sensors for Corvallis Transit System."""
 
 from datetime import timedelta
-import logging
 from typing import Any, cast, override
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import CONF_NAME, CONF_STOP
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
@@ -17,10 +17,11 @@ from .const import (
     CONF_PROJECT,
     CONF_ROUTE,
     CONF_ROUTE_NAME,
+    DOMAIN,
 )
 from .coordinator import CTSDataUpdateCoordinator
 
-_LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
@@ -49,6 +50,7 @@ class CTSNextBusSensor(CoordinatorEntity[CTSDataUpdateCoordinator], SensorEntity
     """Display the next live CTS arrival for one route and stop."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_has_entity_name = True
     _attr_translation_key = "next_bus"
 
     def __init__(
@@ -70,7 +72,13 @@ class CTSNextBusSensor(CoordinatorEntity[CTSDataUpdateCoordinator], SensorEntity
         self.stop_tag = stop_tag
         self.stop_name = stop_name
         self._attr_unique_id = unique_id
-        self._attr_name = name
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, unique_id)},
+            name=name,
+            manufacturer="Corvallis Transit System",
+            model=f"Route {route_no}",
+            configuration_url="https://www.corvallistransit.com/rtt/public/",
+        )
         self._attr_extra_state_attributes = {
             "project": project_tag,
             "route": route_no,
@@ -83,25 +91,55 @@ class CTSNextBusSensor(CoordinatorEntity[CTSDataUpdateCoordinator], SensorEntity
     @override
     def _handle_coordinator_update(self) -> None:
         """Update the sensor from the shared platform response."""
-        data = self.coordinator.data or {}
+        data = self.coordinator.data
+        if not isinstance(data, dict):
+            data = {}
         trips: list[dict[str, Any]] = []
         destinations: set[str] = set()
 
-        for project in data.get("Projects", []):
+        projects = data.get("Projects", [])
+        if not isinstance(projects, list):
+            projects = []
+
+        for project in projects:
+            if not isinstance(project, dict):
+                continue
             if project.get("Tag") != self.project_tag:
                 continue
-            for route in project.get("Routes", []):
+            routes = project.get("Routes", [])
+            if not isinstance(routes, list):
+                continue
+            for route in routes:
+                if not isinstance(route, dict):
+                    continue
                 if (
                     route.get("No") != self.route_no
                     or route.get("Name") != self.route_name
                 ):
                     continue
-                for destination in route.get("Destinations", []):
+                destinations_for_route = route.get("Destinations", [])
+                if not isinstance(destinations_for_route, list):
+                    continue
+                for destination in destinations_for_route:
+                    if not isinstance(destination, dict):
+                        continue
                     destinations.add(str(destination.get("Name", "")))
-                    trips.extend(destination.get("Trips", []))
+                    destination_trips = destination.get("Trips", [])
+                    if isinstance(destination_trips, list):
+                        trips.extend(
+                            trip for trip in destination_trips if isinstance(trip, dict)
+                        )
 
-        live_trips = [trip for trip in trips if trip.get("ET") is not None]
-        live_trips.sort(key=lambda trip: trip["ET"])
+        live_trips: list[tuple[int, dict[str, Any]]] = []
+        for trip in trips:
+            eta = trip.get("ET")
+            if eta is None or isinstance(eta, bool):
+                continue
+            try:
+                live_trips.append((int(eta), trip))
+            except (TypeError, ValueError):
+                continue
+        live_trips.sort(key=lambda trip: trip[0])
         scheduled_trips = [trip for trip in trips if trip.get("ST") is not None]
 
         self._attr_extra_state_attributes["destination"] = ", ".join(
@@ -111,10 +149,10 @@ class CTSNextBusSensor(CoordinatorEntity[CTSDataUpdateCoordinator], SensorEntity
 
         if live_trips:
             self._attr_native_value = dt_util.utcnow() + timedelta(
-                minutes=int(live_trips[0]["ET"])
+                minutes=live_trips[0][0]
             )
             self._attr_extra_state_attributes["upcoming"] = ", ".join(
-                str(trip["ET"]) for trip in live_trips
+                str(trip[0]) for trip in live_trips
             )
             self._attr_extra_state_attributes.pop("scheduled", None)
         elif scheduled_trips:

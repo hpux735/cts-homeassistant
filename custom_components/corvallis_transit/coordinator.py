@@ -1,7 +1,7 @@
 """Data update coordinator for Corvallis Transit System."""
 
-from datetime import timedelta
 import logging
+from datetime import timedelta
 from typing import Any, override
 
 from homeassistant.core import HomeAssistant

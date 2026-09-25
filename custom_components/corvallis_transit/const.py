@@ -4,7 +4,9 @@ from typing import Final
 
 DOMAIN: Final = "corvallis_transit"
 API_BASE: Final = "https://www.corvallistransit.com/rtt/public/api/transit"
-MAP_BUILD_NO: Final = "6477"
+# The endpoint accepts zero as "latest". This avoids pinning the integration to
+# the build number used by the provider's web application.
+MAP_BUILD_NO: Final = "0"
 
 CONF_PROJECT: Final = "project"
 CONF_ROUTE: Final = "route"

@@ -51,6 +51,50 @@ def _platform_label(platform: Mapping[str, Any]) -> str:
     return f"{platform['Name']} ({number})" if number else str(platform["Name"])
 
 
+def _platform_options(
+    platforms: Mapping[str, Mapping[str, Any]],
+) -> dict[str, str]:
+    """Build stop labels, adding cardinal direction for duplicate stop names."""
+    by_name: dict[str, list[Mapping[str, Any]]] = {}
+    for platform in platforms.values():
+        by_name.setdefault(str(platform["Name"]), []).append(platform)
+
+    options: dict[str, str] = {}
+    for tag, platform in platforms.items():
+        peers = by_name[str(platform["Name"])]
+        direction = None
+        if len(peers) > 1:
+            coordinates = [
+                (peer.get("X"), peer.get("Y"))
+                for peer in peers
+                if isinstance(peer.get("X"), (int, float))
+                and isinstance(peer.get("Y"), (int, float))
+            ]
+            if len(coordinates) == len(peers):
+                x_range = max(x for x, _ in coordinates) - min(
+                    x for x, _ in coordinates
+                )
+                y_range = max(y for _, y in coordinates) - min(
+                    y for _, y in coordinates
+                )
+                if y_range >= x_range:
+                    direction = (
+                        "Northbound"
+                        if platform["Y"] == min(y for _, y in coordinates)
+                        else "Southbound"
+                    )
+                else:
+                    direction = (
+                        "Westbound"
+                        if platform["X"] == min(x for x, _ in coordinates)
+                        else "Eastbound"
+                    )
+
+        label = _platform_label(platform)
+        options[tag] = f"{label} - {direction}" if direction else label
+    return options
+
+
 class CTSConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle CTS configuration."""
 
@@ -215,13 +259,6 @@ class CTSConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="stop",
             data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_STOP): _selector(
-                        {
-                            tag: _platform_label(platform)
-                            for tag, platform in platforms.items()
-                        }
-                    )
-                }
+                {vol.Required(CONF_STOP): _selector(_platform_options(platforms))}
             ),
         )

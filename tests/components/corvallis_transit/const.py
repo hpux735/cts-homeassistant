@@ -14,6 +14,7 @@ MAP_DATA = {
     "Platforms": [
         {"Tag": 5, "No": "#10976", "Name": STOP_NAME, "X": 1, "Y": 2},
         {"Tag": 6, "No": "#10977", "Name": "Another Stop", "X": 3, "Y": 4},
+        {"Tag": 7, "No": "#10911", "Name": STOP_NAME, "X": 1, "Y": 1},
     ],
     "Projects": [
         {
@@ -23,7 +24,7 @@ MAP_DATA = {
                 {
                     "No": ROUTE,
                     "Name": ROUTE_NAME,
-                    "Platforms": [5, 6],
+                    "Platforms": [5, 6, 7],
                 }
             ],
         },

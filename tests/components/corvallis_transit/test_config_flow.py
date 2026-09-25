@@ -10,7 +10,10 @@ from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.corvallis_transit.api import CTSApiError
-from custom_components.corvallis_transit.config_flow import CTSConfigFlow
+from custom_components.corvallis_transit.config_flow import (
+    CTSConfigFlow,
+    _platform_options,
+)
 from custom_components.corvallis_transit.const import (
     CONF_PROJECT,
     CONF_ROUTE,
@@ -46,6 +49,19 @@ async def test_user_config(hass: HomeAssistant, mock_map_data: AsyncMock) -> Non
     assert result["data"]["platform_tag"] == STOP
     assert result["result"].unique_id == UNIQUE_ID
     assert mock_map_data.await_count == 1
+
+
+def test_duplicate_stop_labels_include_direction() -> None:
+    """Label duplicate stop names with cardinal directions."""
+    options = _platform_options(
+        {
+            "5": {"Tag": 5, "No": "#10976", "Name": "Main St", "X": 1, "Y": 2},
+            "7": {"Tag": 7, "No": "#10911", "Name": "Main St", "X": 1, "Y": 1},
+        }
+    )
+
+    assert options["5"].endswith("Southbound")
+    assert options["7"].endswith("Northbound")
 
 
 async def test_connection_failure(hass: HomeAssistant) -> None:

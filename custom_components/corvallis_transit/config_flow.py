@@ -1,5 +1,6 @@
 """Config flow for Corvallis Transit System."""
 
+import re
 from collections.abc import Mapping
 from typing import Any, override
 
@@ -57,11 +58,11 @@ def _platform_options(
     """Build stop labels, adding cardinal direction for duplicate stop names."""
     by_name: dict[str, list[Mapping[str, Any]]] = {}
     for platform in platforms.values():
-        by_name.setdefault(str(platform["Name"]), []).append(platform)
+        by_name.setdefault(_stop_match_key(str(platform["Name"])), []).append(platform)
 
     options: dict[str, str] = {}
     for tag, platform in platforms.items():
-        peers = by_name[str(platform["Name"])]
+        peers = by_name[_stop_match_key(str(platform["Name"]))]
         direction = None
         if len(peers) > 1:
             coordinates = [
@@ -77,22 +78,43 @@ def _platform_options(
                 y_range = max(y for _, y in coordinates) - min(
                     y for _, y in coordinates
                 )
-                if y_range >= x_range:
-                    direction = (
-                        "Northbound"
-                        if platform["Y"] == min(y for _, y in coordinates)
-                        else "Southbound"
-                    )
-                else:
-                    direction = (
-                        "Westbound"
-                        if platform["X"] == min(x for x, _ in coordinates)
-                        else "Eastbound"
-                    )
+                if x_range <= 250 and y_range <= 250:
+                    if y_range >= x_range:
+                        direction = (
+                            "Northbound"
+                            if platform["Y"] == min(y for _, y in coordinates)
+                            else "Southbound"
+                        )
+                    else:
+                        direction = (
+                            "Westbound"
+                            if platform["X"] == min(x for x, _ in coordinates)
+                            else "Eastbound"
+                        )
 
         label = _platform_label(platform)
         options[tag] = f"{label} - {direction}" if direction else label
     return options
+
+
+def _stop_match_key(name: str) -> str:
+    """Normalize intersection names for matching opposite-side stops."""
+    normalized = name.casefold()
+    for word, replacement in {
+        "northwest": "nw",
+        "northeast": "ne",
+        "southwest": "sw",
+        "southeast": "se",
+        "street": "st",
+        "avenue": "ave",
+        "boulevard": "blvd",
+        "road": "rd",
+        "drive": "dr",
+        "highway": "hwy",
+    }.items():
+        normalized = re.sub(rf"\b{word}\b", replacement, normalized)
+    normalized = re.sub(r"\b(?:n|s|e|w|ne|nw|se|sw)\b", "", normalized)
+    return re.sub(r"[^a-z0-9]+", "", normalized)
 
 
 class CTSConfigFlow(ConfigFlow, domain=DOMAIN):

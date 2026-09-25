@@ -55,13 +55,27 @@ def test_duplicate_stop_labels_include_direction() -> None:
     """Label duplicate stop names with cardinal directions."""
     options = _platform_options(
         {
-            "5": {"Tag": 5, "No": "#10976", "Name": "Main St", "X": 1, "Y": 2},
-            "7": {"Tag": 7, "No": "#10911", "Name": "Main St", "X": 1, "Y": 1},
+            "399": {
+                "Tag": 399,
+                "No": "#14990",
+                "Name": "NW 29th Street & Circle Blvd",
+                "X": 10454,
+                "Y": 4389,
+            },
+            "86": {
+                "Tag": 86,
+                "No": "#12630",
+                "Name": "NW 29th St & NW Circle Blvd",
+                "X": 10436,
+                "Y": 4495,
+            },
         }
     )
 
-    assert options["5"].endswith("Southbound")
-    assert options["7"].endswith("Northbound")
+    assert options["399"] == (
+        "NW 29th Street & Circle Blvd (#14990) - Northbound"
+    )
+    assert options["86"] == "NW 29th St & NW Circle Blvd (#12630) - Southbound"
 
 
 async def test_connection_failure(hass: HomeAssistant) -> None:

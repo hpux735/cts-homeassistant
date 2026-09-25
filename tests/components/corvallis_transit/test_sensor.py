@@ -61,7 +61,10 @@ async def test_malformed_and_empty_arrivals(
                         "No": "2",
                         "Name": "9th st/hospital",
                         "Destinations": [
-                            {"Name": "Downtown", "Trips": [{"ET": "bad"}]}
+                            {
+                                "Name": "Downtown",
+                                "Trips": [{"ET": "bad"}, {"ET": True}],
+                            }
                         ],
                     }
                 ],
@@ -81,8 +84,11 @@ async def test_malformed_and_empty_arrivals(
 @pytest.mark.parametrize(
     "payload",
     [
+        [],
         {"Projects": {}},
+        {"Projects": [None]},
         {"Projects": [{"Tag": 1, "Routes": {}}]},
+        {"Projects": [{"Tag": 1, "Routes": [None]}]},
         {
             "Projects": [
                 {

@@ -2,13 +2,15 @@
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from homeassistant import config_entries
 from homeassistant.const import CONF_STOP
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.corvallis_transit.api import CTSApiError
+from custom_components.corvallis_transit.config_flow import CTSConfigFlow
 from custom_components.corvallis_transit.const import (
     CONF_PROJECT,
     CONF_ROUTE,
@@ -75,16 +77,34 @@ async def test_no_projects(hass: HomeAssistant) -> None:
 
 
 async def test_invalid_project(hass: HomeAssistant, mock_map_data: AsyncMock) -> None:
-    """Reject an agency that is not in the map response."""
+    """Reject an agency that is not in the selector options."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {CONF_PROJECT: "missing"}
-    )
+    with pytest.raises(InvalidData):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_PROJECT: "missing"}
+        )
 
-    assert result["type"] is FlowResultType.FORM
+
+async def test_flow_defensive_validation(hass: HomeAssistant) -> None:
+    """Cover defensive checks when a flow is called outside the UI manager."""
+    flow = CTSConfigFlow()
+    flow.hass = hass
+    flow.context = {"source": config_entries.SOURCE_USER}
+    flow._projects = {"1": {"Tag": 1, "Name": "CTS", "Routes": []}}
+    result = await flow.async_step_project({CONF_PROJECT: "missing"})
     assert result["errors"] == {CONF_PROJECT: "invalid_project"}
+
+    flow._data = {CONF_PROJECT: "1"}
+    flow._routes = {}
+    result = await flow.async_step_route({CONF_ROUTE: "missing"})
+    assert result["errors"] == {CONF_ROUTE: "invalid_route"}
+
+    flow._selected_route = {"No": "1", "Name": "route", "Platforms": [5]}
+    flow._map_data = {"Platforms": []}
+    result = await flow.async_step_stop({CONF_STOP: "missing"})
+    assert result["errors"] == {CONF_STOP: "invalid_stop"}
 
 
 async def test_invalid_route(hass: HomeAssistant, mock_map_data: AsyncMock) -> None:
@@ -95,17 +115,33 @@ async def test_invalid_route(hass: HomeAssistant, mock_map_data: AsyncMock) -> N
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_PROJECT: PROJECT}
     )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {CONF_ROUTE: "missing"}
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {CONF_ROUTE: "invalid_route"}
+    with pytest.raises(InvalidData):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_ROUTE: "missing"}
+        )
 
 
 async def test_no_routes(hass: HomeAssistant) -> None:
     """Abort when an agency has no routes."""
     map_data = {**MAP_DATA, "Projects": [{"Tag": 1, "Name": "Empty"}]}
+    with patch(
+        "custom_components.corvallis_transit.config_flow.async_get_map_data",
+        new=AsyncMock(return_value=map_data),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_PROJECT: "1"}
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_routes"
+
+
+async def test_malformed_route_container(hass: HomeAssistant) -> None:
+    """Abort instead of crashing when route data is not a list."""
+    map_data = {"Projects": [{"Tag": 1, "Name": "Malformed", "Routes": None}]}
     with patch(
         "custom_components.corvallis_transit.config_flow.async_get_map_data",
         new=AsyncMock(return_value=map_data),
@@ -152,6 +188,36 @@ async def test_no_stops(hass: HomeAssistant) -> None:
     assert result["reason"] == "no_stops"
 
 
+async def test_malformed_stop_containers(hass: HomeAssistant) -> None:
+    """Abort instead of crashing when stop data is malformed."""
+    map_data = {
+        "Projects": [
+            {
+                "Tag": 1,
+                "Name": "Malformed stops",
+                "Routes": [{"No": "1", "Name": "route", "Platforms": None}],
+            }
+        ],
+        "Platforms": None,
+    }
+    with patch(
+        "custom_components.corvallis_transit.config_flow.async_get_map_data",
+        new=AsyncMock(return_value=map_data),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_PROJECT: "1"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_ROUTE: "1|route"}
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_stops"
+
+
 async def test_invalid_stop(hass: HomeAssistant, mock_map_data: AsyncMock) -> None:
     """Reject a stop that is not served by the selected route."""
     result = await hass.config_entries.flow.async_init(
@@ -163,12 +229,10 @@ async def test_invalid_stop(hass: HomeAssistant, mock_map_data: AsyncMock) -> No
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_ROUTE: f"{ROUTE}|9th st/hospital"}
     )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {CONF_STOP: "missing"}
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {CONF_STOP: "invalid_stop"}
+    with pytest.raises(InvalidData):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_STOP: "missing"}
+        )
 
 
 async def test_duplicate_entry(hass: HomeAssistant, mock_map_data: AsyncMock) -> None:

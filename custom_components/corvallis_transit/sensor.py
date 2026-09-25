@@ -87,6 +87,11 @@ class CTSNextBusSensor(CoordinatorEntity[CTSDataUpdateCoordinator], SensorEntity
             "stop_name": stop_name,
         }
 
+    async def async_added_to_hass(self) -> None:
+        """Render the initial coordinator data when the entity is added."""
+        self._handle_coordinator_update()
+        await super().async_added_to_hass()
+
     @callback
     @override
     def _handle_coordinator_update(self) -> None:
